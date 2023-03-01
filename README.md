@@ -89,6 +89,9 @@ pip install deepconsensus[cpu]==1.2.0
 export PATH="/home/${USER}/.local/bin:${PATH}"
 ```
 
+Note that for pip installation you may need to make sure `gcc` is installed on
+the machine (install via `sudo apt install gcc`).
+
 ### From Docker image
 
 For GPU:
