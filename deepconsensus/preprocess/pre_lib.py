@@ -571,7 +571,7 @@ class DcExample:
   @property
   def label_coords(self) -> str:
     if self.is_training:
-      return self.label.label_coords
+      return self.label.label_coords  # pytype: disable=attribute-error  # always-use-return-annotations
     return ''
 
   @property
@@ -794,7 +794,7 @@ class DcExample:
     reads = [x[r_slice] for x in reads]
     if self.label:
       ccs_slice = self.ccs[r_slice].ccs_bounds
-      reads.append(self.label.ccs_slice(ccs_slice.start, ccs_slice.stop))
+      reads.append(self.label.ccs_slice(ccs_slice.start, ccs_slice.stop))  # pytype: disable=attribute-error  # always-use-return-annotations
     return DcExample(self.name, reads, self.config)
 
   def __repr__(self):
