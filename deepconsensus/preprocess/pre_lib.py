@@ -153,11 +153,17 @@ class Read(abc.Sequence):
   rg: Optional[str] = None
 
   # base_quality_scores are only used for the ccs read.
-  ccs_idx: np.ndarray = np.empty(0, dtype=int)
-  base_quality_scores: np.ndarray = np.empty(0, dtype=np.uint8)
+  ccs_idx: np.ndarray = dataclasses.field(
+      default_factory=lambda: np.empty(0, dtype=int)
+  )
+  base_quality_scores: np.ndarray = dataclasses.field(
+      default_factory=lambda: np.empty(0, dtype=np.uint8)
+  )
 
   # truth_idx and truth_range only used with label reads.
-  truth_idx: np.ndarray = np.empty(0, int)
+  truth_idx: np.ndarray = dataclasses.field(
+      default_factory=lambda: np.empty(0, int)
+  )
   # truth range is a dict containing contig, begin, end.
   # It is not modified when slicing is performed.
   # The truth_range['contig'] and truth_idx are used calculate
@@ -166,8 +172,12 @@ class Read(abc.Sequence):
   truth_range: Union[Dict[str, Any], None] = None
 
   # Alignment Variables.
-  _seq_indices: np.ndarray = np.empty(0, dtype=int)
-  _is_insertion: np.ndarray = np.empty(0, dtype=bool)
+  _seq_indices: np.ndarray = dataclasses.field(
+      default_factory=lambda: np.empty(0, dtype=int)
+  )
+  _is_insertion: np.ndarray = dataclasses.field(
+      default_factory=lambda: np.empty(0, dtype=bool)
+  )
   _seq_len: int = 0
   _idx_seq: int = 0
   idx_spaced: int = 0
