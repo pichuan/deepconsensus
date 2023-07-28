@@ -27,7 +27,9 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Functions for yielding input arrays for models."""
 
+import datetime
 import itertools
+import logging
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import ml_collections
@@ -398,7 +400,10 @@ def create_input_fn(
     batch_size = params.batch_size
     assert mode in ['train', 'eval']
     file_patterns = create_glob_list(params[f'{mode}_path'])
-    ds = tf.data.Dataset.list_files(file_patterns)
+    dataset_start_time = datetime.datetime.now()
+    ds = tf.data.Dataset.from_tensor_slices(file_patterns)
+    dataset_end_time = datetime.datetime.now() - dataset_start_time
+    logging.info('Initial tf.data took: %s', dataset_end_time.total_seconds())
     ds = ds.interleave(
         lambda x: tf.data.TFRecordDataset(x, compression_type='GZIP'),
         num_parallel_calls=tf.data.AUTOTUNE,
