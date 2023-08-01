@@ -36,7 +36,7 @@ supported for model training.
 Example usage:
 
 CONFIG="//learning/genomics/deepconsensus/models/model_configs.py:transformer_learn_values_distill+ccs"
-TEACHER_MODEL_DIR=""
+TEACHER_MODEL_DIR="/path/to/checkpoint-50"
 OUT_DIR=/tmp
 
 time blaze run -c opt \
@@ -46,6 +46,9 @@ time blaze run -c opt \
   --out_dir ${OUT_DIR} \
   --xm_runlocal \
   --alsologtostderr
+
+Note that even though the model is called `--teacher_model_dir`, it currently
+requires the checkpoint prefix path as the input.
 """
 
 import datetime
