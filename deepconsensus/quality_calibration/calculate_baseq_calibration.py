@@ -462,18 +462,17 @@ def main(unused_argv) -> None:
     pool.close()
     pool.join()
 
-  base_quality_dataframe = pd.DataFrame(
-      columns=['baseq', 'total_match', 'total_mismatch']
-  )
+  rows = []
   for baseq in range(0, MAX_BASEQ):
-    base_quality_dataframe = base_quality_dataframe.append(
+    rows.append(
         {
             'baseq': str(baseq),
             'total_match': str(global_match_mismatch_stat[baseq]['M']),
             'total_mismatch': str(global_match_mismatch_stat[baseq]['X']),
         },
-        ignore_index=True,
     )
+
+  base_quality_dataframe = pd.DataFrame(rows)
   save_csv(base_quality_dataframe, FLAGS.output_csv)
   print('Processing complete.')
 
