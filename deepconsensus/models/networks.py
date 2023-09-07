@@ -140,7 +140,7 @@ class ConvNet(tf.keras.Model):
     # Define layers
     self.layer_dense = tf.keras.layers.Dense(units=self.dimensions)
 
-  def call(self, inputs: tf.Tensor, training: bool) -> tf.Tensor:
+  def call(self, inputs: tf.Tensor, training: bool) -> tf.Tensor:  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
     # Most conv models only accept 3 channels;
     # The sn channel must be removed and optionally
     # added back at the end. CCS rows not being used currently for this model.
@@ -218,7 +218,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
         'params': self.params,
     }
 
-  def call(self, inputs: tf.Tensor, training: bool) -> tf.Tensor:
+  def call(self, inputs: tf.Tensor, training: bool) -> tf.Tensor:  # pytype: disable=signature-mismatch  # overriding-parameter-count-checks
     """Runs a forward pass of the model.
 
     Args:
