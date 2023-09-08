@@ -118,6 +118,11 @@ _USE_CCS_BQ = flags.DEFINE_bool(
     False,
     'If true, incorporate CCS Base Quality scores into tf.examples.',
 )
+_SKIP_FIRST_LAST = flags.DEFINE_bool(
+    'skip_first_last',
+    False,
+    'If true, skip the first, last, and penultimate windows.',
+)
 # The following just need to match the training parameters.
 _MAX_PASSES = flags.DEFINE_integer(
     'max_passes', 20, 'Maximum subreads in each input.'
@@ -279,6 +284,7 @@ def main(unused_argv) -> None:
       max_passes=_MAX_PASSES.value,
       max_length=_EXAMPLE_WIDTH.value,
       use_ccs_bq=_USE_CCS_BQ.value,
+      skip_first_last=_SKIP_FIRST_LAST.value,
   )
 
   proc_feeder, main_counter = pre_lib.create_proc_feeder(

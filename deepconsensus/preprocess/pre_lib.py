@@ -466,6 +466,9 @@ class DcConfig:
     feature_rows: A dictionary indicating features and corresponding height.
     use_ccs_bq: Boolean indicating whether to incorporate base quality scores
       into model input.
+    skip_first_last: Boolean indicating whether to skip the first, last, and
+      penultimate windows. Useful for generating training examples that skip
+      over barcodes or adapters.
     feature_indices: Calculated indices for each feature.
   """
 
@@ -479,6 +482,7 @@ class DcConfig:
       max_passes: int,
       max_length: int,
       use_ccs_bq: bool = False,
+      skip_first_last: bool = False,
   ):
     self.max_passes = max_passes
     self.max_length = max_length
@@ -494,6 +498,7 @@ class DcConfig:
     # Sets slices indicating rows for each feature type.
     self.feature_indices = dict()
     self.use_ccs_bq = use_ccs_bq
+    self.skip_first_last = skip_first_last
     i_rows = 0
     for k, v in self.feature_rows.items():
       self.feature_indices[k] = slice(i_rows, i_rows + self.feature_rows[k])
@@ -665,7 +670,15 @@ class DcExample:
     self.counter = collections.Counter()
     max_length = self.config.max_length
     start_pos = 0
-    for window_width in self.calculate_windows(max_length):
+
+    window_set = self.calculate_windows(max_length)
+    skip_first_last = self.config.skip_first_last
+
+    for i, window_width in enumerate(window_set):
+      if skip_first_last and i in [0, len(window_set) - 1, len(window_set) - 2]:
+        # If skip_first_last, skip first, last, and penultimate window.
+        self.counter['n_examples_skipped_first_last'] += 1
+        continue
       self.counter['example_width_bucket_{}'.format(window_width)] += 1
       window = self[start_pos : start_pos + window_width]
       if start_pos > self.ccs_width:

@@ -1284,6 +1284,36 @@ class TestDcExampleFunctionality(parameterized.TestCase):
       )
     self.assertEqual(dc_example.counter['n_examples_label_overflow'], 1)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='skip_true',
+          skip_first_last=True,
+          expected_window_count=7,
+      ),
+      dict(
+          testcase_name='skip_false',
+          skip_first_last=False,
+          expected_window_count=10,
+      ),
+  )
+  def test_skip_first_last(self, skip_first_last, expected_window_count):
+    dc_config = pre_lib.DcConfig(
+        max_passes=20,
+        max_length=10,
+        skip_first_last=skip_first_last,
+    )
+    # Test case where label contains large insertions.
+    read_set = []
+    for i in range(0, 10):
+      segment = create_segment(
+          name=f'm0/1/{i}', bases='A' * 100, cigar='100M', reference_start=0
+      )
+      read = pre_lib.expand_clip_indent(segment)
+      read_set.append(read)
+    aln_reads = pre_lib.space_out_subreads(read_set)
+    dc_example = pre_lib.DcExample('test_read_set', aln_reads, dc_config)
+    self.assertLen(list(dc_example.iter_examples()), expected_window_count)
+
   def test_remove_gaps_and_pad(self):
     dc_config = pre_lib.DcConfig(max_passes=20, max_length=100)
     read_set = []
