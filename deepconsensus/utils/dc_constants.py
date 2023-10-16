@@ -49,12 +49,12 @@ PYSAM_READ_ADVANCING_OPS = list(
 )
 
 
-class Issue(int, enum.Enum):
+class Issue(enum.IntEnum):
   TRUTH_ALIGNMENT_NOT_FOUND = 1
   SUPP_TRUTH_ALIGNMENT = 2
 
 
-class Strand(int, enum.Enum):
+class Strand(enum.IntEnum):
   UNKNOWN = 0
   FORWARD = 1  # read.is_reverse == False
   REVERSE = 2  # read.is_reverse == True
