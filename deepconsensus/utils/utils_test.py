@@ -111,6 +111,7 @@ class TestAvgPhred(parameterized.TestCase):
     np_phred = utils.avg_phred(ccs_base_quality_scores)
     self.assertAlmostEqual(np_phred, expected_avg_quality, 3)
     # Test tensorflow implementation
+    ccs_base_quality_scores = tf.cast(ccs_base_quality_scores, tf.float32)
     tf_phred = utils.tf_avg_phred(tf.convert_to_tensor(ccs_base_quality_scores))
     self.assertAlmostEqual(np_phred, tf_phred, 3)
 

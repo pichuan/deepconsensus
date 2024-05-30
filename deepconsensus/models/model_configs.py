@@ -26,9 +26,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Architecture and training hyperparameters for networks."""
+
 # pylint: disable=line-too-long
 import os
-
 from typing import Optional
 import ml_collections
 from ml_collections import config_dict
@@ -61,7 +61,7 @@ def _set_base_fc_hparams(params):
   params.batch_size = 256
   params.num_epochs = 15
   params.num_epochs_for_decay = 15
-  params.buffer_size = 1_000_000
+  params.buffer_size = 10_000
 
   # Optimizer params (optimized for transformer).
   params.initial_learning_rate = 3.6246e-3
@@ -285,6 +285,12 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   # here to set for older models.
   params.rezero = False
 
+  # Data Type
+  # float16, float32, mixed_float16 [GPU],mixed_bfloat16 [TPU]
+  params.mixed_precision_policy = 'float32'
+
+  params.eval_steps = 100
+
   # Base config
   params.PW_MAX = 255
   params.IP_MAX = 255
@@ -356,6 +362,8 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
     _set_transformer_learned_embeddings_distill_hparams(params)
   else:
     raise ValueError('Unknown model_config_name: %s' % model_config_name)
+
+  params.attention_mechanism = 'keras_attention'
 
   if dataset_config_name == 'poa':
     _set_human_aligned_to_poa_data_hparams(params)

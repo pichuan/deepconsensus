@@ -26,11 +26,11 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Common constants shared across the DeepConsensus codebase."""
+
 import enum
 
 import numpy as np
 import pysam
-import tensorflow as tf
 
 # DeepConsensus Version
 __version__ = '1.2.0'
@@ -81,7 +81,7 @@ PYSAM_CSOFT_CLIP = int(pysam.CSOFT_CLIP)
 PYSAM_CHARD_CLIP = int(pysam.CHARD_CLIP)
 
 # Dtypes
-TF_DATA_TYPE = tf.float32
+# Specifies float format to use during preprocessing only.
 NP_DATA_TYPE = np.float32
 
 # E. Coli eval region is first 10% of the genome,

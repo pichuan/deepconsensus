@@ -27,7 +27,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Implementation of fully connected network."""
 
-from typing import Any, Dict, Union, Iterable
+from typing import Any, Dict, Iterable, Union
 import tensorflow as tf
 
 
@@ -79,7 +79,6 @@ class FeedForwardNetwork(tf.keras.layers.Layer):
         length, hidden_size]. Used as input to the next encoder layer.
     """
     # Retrieve dynamically known shapes
-
     output = self.filter_dense_layer(x)
     if training:
       output = tf.nn.dropout(output, rate=self.relu_dropout)

@@ -50,11 +50,9 @@ class PerExampleAccuracy(tf.keras.metrics.Accuracy):
     del sample_weight  # We use the mask calculated here instead.
 
     # Left shift the label and prediction and compare.
-    y_true = tf.cast(left_shift_sequence(y_true), dc_constants.TF_DATA_TYPE)
+    y_true = tf.cast(left_shift_sequence(y_true), dtype=tf.float32)
     # Convert pred scores and left shift.
-    y_pred = tf.cast(
-        tf.argmax(y_pred_scores, axis=-1), dc_constants.TF_DATA_TYPE
-    )
+    y_pred = tf.cast(tf.argmax(y_pred_scores, axis=-1), dtype=tf.float32)
     y_pred = left_shift_sequence(y_pred)
 
     # Count matching positions per row.
@@ -80,12 +78,8 @@ class PerClassAccuracy(tf.keras.metrics.Accuracy):
   ) -> None:
     """Accumulates running per-position accuracy for the given class."""
     del sample_weight  # We use the mask calculated here instead.
-    y_pred = tf.cast(
-        tf.argmax(y_pred_scores, axis=-1), dc_constants.TF_DATA_TYPE
-    )
-    mask = tf.cast(
-        tf.equal(y_true, self.class_value), dc_constants.TF_DATA_TYPE
-    )
+    y_pred = tf.cast(tf.argmax(y_pred_scores, axis=-1), y_true.dtype)
+    mask = tf.cast(tf.equal(y_true, self.class_value), y_true.dtype)
     super().update_state(y_true, y_pred, sample_weight=mask)
 
 
@@ -157,10 +151,9 @@ def accuracy_subs_cost_fn(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     A tf.Tensor<float>[batch, m, n] such that out[b][l1][l2] has value 1.0 if
     argmax(y_true[b][l1]) equals argmax(y_pred[b][l2]) being 0.0 otherwise.
   """
-  dtype = y_pred.dtype
   y_true, y_pred = tf.argmax(y_true, axis=-1), tf.argmax(y_pred, axis=-1)
   y_true, y_pred = tf.expand_dims(y_true, 2), tf.expand_dims(y_pred, 1)
-  return tf.cast(y_true == y_pred, dtype)
+  return tf.cast(y_true == y_pred, tf.float32)
 
 
 def pbmm2_subs_cost_fn(
@@ -306,14 +299,12 @@ class AlignmentLoss(tf.keras.losses.Loss):
   @staticmethod
   def preprocess_y_true(
       y_true: tf.Tensor,
-      dtype: tf.DType = tf.float32,
   ) -> Tuple[tf.Tensor, tf.Tensor]:
     """Applies AlignmentLoss-specific preprocessing to labels tensor.
 
     Args:
       y_true: A tf.Tensor<[float, int]>[batch, m] representing the ground-truth
         sequences.
-      dtype: The dtype for the one-hot encoded output tensor of sequence labels.
 
     Returns:
       A tuple (y_true_oh, seq_lens) such that
@@ -325,6 +316,7 @@ class AlignmentLoss(tf.keras.losses.Loss):
         +  seq_lens is a tf.Tensor<int>[batch] containing the length of each
            label sequence in y_true, excluding any pad and gap tokens.
     """
+    output_dtype = y_true.dtype
     # Ensures y_true is of integer type.
     y_true = tf.cast(y_true, tf.int32)
     # Removes internal gaps, shifting sequences left.
@@ -334,7 +326,7 @@ class AlignmentLoss(tf.keras.losses.Loss):
     seq_lens = tf.reduce_sum(tf.cast(y_true != pad_token, y_true.dtype), -1)
     # Converts y_true to one-hot.
     n_tokens = len(dc_constants.SEQ_VOCAB)
-    y_true_oh = tf.one_hot(y_true, depth=n_tokens, dtype=dtype)
+    y_true_oh = tf.one_hot(y_true, depth=n_tokens, dtype=output_dtype)
     return y_true_oh, seq_lens
 
   @staticmethod
@@ -410,7 +402,7 @@ class AlignmentLoss(tf.keras.losses.Loss):
 
     return v_opt
 
-  def weave_band(self, input_v: tf.Tensor, inf: float):
+  def weave_band(self, input_v: tf.Tensor, inf: tf.Variable):
     """Transforms a band around the diagonal of the matrix in a tall matrix.
 
     Args:
@@ -445,7 +437,7 @@ class AlignmentLoss(tf.keras.losses.Loss):
         tf.stack([diags, tf.fill(tf.shape(diags), inf)], -1),
         [batch, n_diag, -1],
     )
-    woven_band_tr = inf * tf.ones((n_diag, batch, 2 * len_v))
+    woven_band_tr = inf * tf.ones((n_diag, batch, 2 * len_v), dtype=inf.dtype)
     for diff in tf.range(-width, width + 1):
       i = diff + width
       abs_diff = tf.abs(diff)
@@ -495,12 +487,14 @@ class AlignmentLoss(tf.keras.losses.Loss):
     len_2 = tf.shape(subs_costs)[2]
     val_trans = tf.zeros((len_1 + 1, len_2 + 1, batch))
     updates = [
-        del_cost
+        tf.cast(del_cost, tf.float32)
         * tf.tile(
             tf.range(len_1 + 1, dtype=tf.float32)[..., tf.newaxis],
             multiples=[1, batch],
         )
     ]
+    # Use float32 initially, then cast if necessary later.
+    ins_costs = tf.cast(ins_costs, tf.float32)
     val_trans = tf.tensor_scatter_nd_update(val_trans, [[0]], updates)
     for i in tf.range(1, len_1 + 1):
       previous_row = val_trans[i - 1, 0]
@@ -508,6 +502,7 @@ class AlignmentLoss(tf.keras.losses.Loss):
           val_trans, [[i, 0]], [previous_row + ins_costs[:, i - 1]]
       )
       values = tf.transpose(val_trans, [2, 1, 0])
+    values = tf.cast(values, dtype)
     input_band = self.weave_band(values, inf)
     subs_band = self.weave_band(subs_costs, inf)
     ins_costs_pad = tf.pad(ins_costs, [[0, 0], [1, 0]], constant_values=0.0)
@@ -515,6 +510,7 @@ class AlignmentLoss(tf.keras.losses.Loss):
     insert_expand = tf.tile(
         ins_costs_pad[:, tf.newaxis, :], multiples=[1, len_1 + 1, 1]
     )
+    insert_expand = tf.cast(insert_expand, inf.dtype)
     insert_band = self.weave_band(insert_expand, inf)
     length = tf.shape(input_band)[1]
     # Sets up reduction operators.
@@ -570,7 +566,9 @@ class AlignmentLoss(tf.keras.losses.Loss):
       alignment model.
     """
     # Gathers type variables.
-    dtype = y_pred.dtype
+    dtype = tf.float32  # cast to float32 to avoid numerical instability.
+    y_true = tf.cast(y_true, dtype=dtype)
+    y_pred = tf.cast(y_pred, dtype=dtype)
     # Defines an appropriate large positive float to represent "infinity".
     inf = tf.convert_to_tensor(1e9, dtype)  # TODO: float16 support?
 
@@ -731,7 +729,9 @@ class AlignmentMetric(tf.keras.metrics.Metric):
         These represent per-example alignment-derived metrics.
     """
     # Gathers type variables.
-    dtype = y_pred.dtype
+    dtype = tf.float32  # cast to float32 to avoid numerical instability.
+    y_true = tf.cast(y_true, dtype=dtype)
+    y_pred = tf.cast(y_pred, dtype=dtype)
     # Gathers shape variables.
     b = tf.shape(y_true)[0]  # Equals tf.shape(y_pred)[0].
     # Note: the assert will not be executed on TPU.
@@ -741,8 +741,9 @@ class AlignmentMetric(tf.keras.metrics.Metric):
         message='y_true and y_pred must have the same batch size.',
     )
     m, n = tf.shape(y_true)[1], tf.shape(y_pred)[1]
+
     # Defines an appropriate large positive float to represent "infinity".
-    inf = tf.convert_to_tensor(1e9, dtype)  # TODO: float16 support?
+    inf = tf.convert_to_tensor(1e9, dtype)
     # Convert parameters to tf.Tensor.
     matching_score = tf.convert_to_tensor(self.matching_score, dtype=dtype)
     mismatch_penalty = tf.convert_to_tensor(self.mismatch_penalty, dtype=dtype)
@@ -1083,6 +1084,8 @@ def get_batch_identity_ccs_pred(
           identity (between 0 and 1) of predicted sequence over batch.
   """
   # Calculate identity for the predicted sequence.
+  y_true = tf.cast(y_true, dtype=tf.float32)
+  y_pred = tf.cast(y_pred, dtype=tf.float32)
   _, _, metric_values_pred = alignment_metric.alignment(y_true, y_pred)
   identity_pred = per_batch_identity(metric_values_pred)
 
@@ -1090,7 +1093,7 @@ def get_batch_identity_ccs_pred(
   ccs = tf.cast(ccs, tf.int32)
   # Convert CCS to one-hot to match the shape of expected alignment inputs.
   ccs_one_hot = tf.one_hot(
-      ccs, depth=len(dc_constants.SEQ_VOCAB), dtype=dc_constants.TF_DATA_TYPE
+      ccs, depth=len(dc_constants.SEQ_VOCAB), dtype=tf.float32
   )
 
   _, _, metric_values_ccs = alignment_metric.alignment(y_true, ccs_one_hot)
@@ -1130,10 +1133,10 @@ class YieldOverCCSMetric(tf.keras.metrics.Metric):
     super(YieldOverCCSMetric, self).__init__(name=name, **kwargs)
     self.quality_threshold = quality_threshold
     self.yield_dc = self.add_weight(
-        name='yield_dc', shape=[], initializer='zeros'
+        name='yield_dc', shape=[], initializer='zeros', dtype=tf.float32
     )
     self.yield_ccs = self.add_weight(
-        name='yield_ccs', shape=[], initializer='zeros'
+        name='yield_ccs', shape=[], initializer='zeros', dtype=tf.float32
     )
 
   def update_state(
@@ -1147,6 +1150,8 @@ class YieldOverCCSMetric(tf.keras.metrics.Metric):
       identity_pred: A tf.Tensor of size [] that contains proportion identity
         (between 0 and 1) of predicted sequence over batch.
     """
+    identity_pred = tf.cast(identity_pred, dtype=tf.float32)
+
     yield_dc = tf.cast(
         identity_pred >= self.quality_threshold, dtype=tf.float32
     )

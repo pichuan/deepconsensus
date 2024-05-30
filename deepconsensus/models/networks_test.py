@@ -31,7 +31,6 @@ import itertools
 
 from absl.testing import absltest
 from absl.testing import parameterized
-
 import ml_collections
 import numpy as np
 import tensorflow as tf
@@ -68,9 +67,12 @@ class ModelsTest(parameterized.TestCase):
               'transformer_learn_values+test',
           ],
           [True, False],
+          ['float16', 'float32'],
       )
   )
-  def test_outputs(self, training, config_name, use_predict):
+  def test_outputs(
+      self, training, config_name, use_predict, mixed_precision_policy
+  ):
     """Checks that softmax distribution and final predictions are valid.
 
     This test is only checking the output format and does not train the model.
@@ -78,12 +80,16 @@ class ModelsTest(parameterized.TestCase):
       training: whether we are in training or eval/test mode.
       config_name: config to test.
       use_predict: whether to use model.predict or call model as a function.
+      mixed_precision_policy: Whether to use float16 or float32.
     """
     params = model_configs.get_config(config_name)
+    params.mixed_precision_policy = mixed_precision_policy
+    tf.keras.mixed_precision.set_global_policy(mixed_precision_policy)
     model_utils.modify_params(params)
     model = model_utils.get_model(params)
     inference = not training
     rows = get_tf_example_rows(params, inference=inference)
+    rows = tf.convert_to_tensor(rows, dtype=mixed_precision_policy)
     if use_predict:
       softmax_output = model.predict(rows)
     else:
@@ -100,6 +106,7 @@ class ModelsTest(parameterized.TestCase):
         np.allclose(
             np.sum(softmax_output, axis=-1),
             np.ones(shape=[params.batch_size, params.max_length]),
+            atol=0.01,
         )
     )
     self.assertEqual(predictions.shape, (params.batch_size, params.max_length))
@@ -118,6 +125,7 @@ class ModelsTest(parameterized.TestCase):
     """Checks that model.predict and calling model as a function are equal."""
     config = model_configs.get_config(config_name)
     model_utils.modify_params(config)
+    tf.keras.mixed_precision.set_global_policy(config['mixed_precision_policy'])
     model = model_utils.get_model(config)
     rows = get_tf_example_rows(config, inference=inference)
     softmax_output_predict = model.predict(rows)

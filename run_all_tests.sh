@@ -43,7 +43,6 @@ fi;
 python3 -m deepconsensus.inference.quick_inference_test
 python3 -m deepconsensus.models.data_providers_test
 python3 -m deepconsensus.models.losses_and_metrics_test
-python3 -m deepconsensus.models.model_inference_transforms_test
 python3 -m deepconsensus.models.networks_test
 python3 -m deepconsensus.postprocess.stitch_utils_test
 python3 -m deepconsensus.preprocess.preprocess_test

@@ -35,8 +35,8 @@ import tensorflow as tf
 
 from deepconsensus.models import data_providers
 from deepconsensus.models import encoder_stack
-from official.nlp.modeling import layers
 from deepconsensus.utils import dc_constants
+from official.nlp.modeling import layers
 
 
 class ModifiedOnDeviceEmbedding(layers.OnDeviceEmbedding):
@@ -211,7 +211,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
         kernel_initializer='glorot_uniform',
         bias_initializer='zeros',
     )
-    self.softmax = tf.keras.layers.Softmax()
+    self.softmax = tf.keras.layers.Softmax(dtype=tf.float32)
 
   def get_config(self) -> Dict[str, Any]:
     return {
@@ -300,7 +300,8 @@ class EncoderOnlyTransformer(tf.keras.Model):
       # hidden_size. If hidden_size is odd, add an empty row to make it even.
       if self.params.add_pos_encoding and encoder_inputs.shape[2] % 2 != 0:
         empty_row = tf.zeros(
-            shape=(encoder_inputs.shape[0], encoder_inputs.shape[1], 1)
+            shape=(encoder_inputs.shape[0], encoder_inputs.shape[1], 1),
+            dtype=tf.keras.mixed_precision.global_policy().compute_dtype,
         )
         encoder_inputs = tf.concat([encoder_inputs, empty_row], axis=-1)
         assert self.params.hidden_size == encoder_inputs.shape[2]
@@ -311,7 +312,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
       inputs_padding = tf.reduce_sum(tf.zeros_like(encoder_inputs), -1)
 
       # Cast input `attention_bias` to correct type, as done in the base model.
-      attention_bias = tf.cast(attention_bias, dc_constants.TF_DATA_TYPE)
+      attention_bias = tf.cast(attention_bias, inputs.dtype)
 
       # Add positional encoding to the input. The scale of the positional
       # encoding relative to the input values will matter since we are not
@@ -319,7 +320,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
       if self.params['add_pos_encoding']:
         with tf.name_scope('add_pos_encoding'):
           pos_encoding = self.position_embedding(inputs=encoder_inputs)
-          pos_encoding = tf.cast(pos_encoding, dc_constants.TF_DATA_TYPE)
+          pos_encoding = tf.cast(pos_encoding, inputs.dtype)
           encoder_inputs += pos_encoding
 
       # Add dropout when training.
@@ -504,7 +505,6 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
         embedded_inputs.append(embedded)
 
     embedded_inputs = tf.concat(embedded_inputs, axis=-1)
-    embedded_inputs = tf.cast(embedded_inputs, dc_constants.TF_DATA_TYPE)
 
     if self.params.condense_transformer_input:
       # Condense the transformer input at each position to a smaller vector to

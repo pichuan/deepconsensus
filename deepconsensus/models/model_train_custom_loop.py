@@ -58,6 +58,7 @@ from deepconsensus.models import model_utils
 from deepconsensus.utils import dc_constants
 
 
+
 FLAGS = flags.FLAGS
 config_flags.DEFINE_config_file('params', None, 'Training configuration.')
 _OUT_DIR = flags.DEFINE_string(
@@ -100,6 +101,9 @@ def train_model(
   # Freeze config dict here to ensure it is hashable.
   params = ml_collections.FrozenConfigDict(params)
 
+  if params['mixed_precision_policy']:
+    tf.keras.mixed_precision.set_global_policy(params['mixed_precision_policy'])
+
   if out_dir is None:
     raise ValueError('--out_dir must be defined.')
 
@@ -133,6 +137,8 @@ def train_model(
     # on the total training steps taken during final training.
     decay_steps = steps_per_epoch * params['num_epochs_for_decay']
     optimizer = model_utils.create_optimizer(params, decay_steps)
+    if params['mixed_precision_policy'] in ['mixed_float16', 'float16']:
+      optimizer = tf.keras.mixed_precision.LossScaleOptimizer(optimizer)
     train_loss = tf.keras.metrics.Mean(name='train/loss')
     train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='train/')
     eval_loss = tf.keras.metrics.Mean(name='eval/loss')
@@ -165,64 +171,67 @@ def train_model(
   train_writer = tf.summary.create_file_writer(os.path.join(out_dir, 'train'))
   eval_writer = tf.summary.create_file_writer(os.path.join(out_dir, 'eval'))
 
-  def train_step(inputs):
-    """Training StepFn."""
-    features, labels = inputs
-    with tf.GradientTape() as tape:
-      predictions = model(features)
+  @tf.function
+  def distributed_train_step(iterator, num_steps):
+    def train_step(inputs):
+      """Training StepFn."""
+      features, labels = inputs
+
+      with tf.GradientTape() as tape:
+        predictions = model(features, training=True)
+        loss = compute_loss(labels, predictions)
+        if params['mixed_precision_policy'] in ['mixed_float16', 'float16']:
+          loss = optimizer.get_scaled_loss(loss)
+      # Multiply loss by a scaling factor to preserve small gradient magnitudes.
+      grads = tape.gradient(loss, model.trainable_variables)
+      if params['mixed_precision_policy'] in ['mixed_float16', 'float16']:
+        grads = optimizer.get_unscaled_gradients(grads)
+      optimizer.apply_gradients(zip(grads, model.trainable_variables))
+      train_loss.update_state(loss)
+
+      # Calculate identity for CCS and the DC prediction.
+      ccs = model_utils.get_ccs_from_example(features, params)
+      (identity_ccs, identity_pred) = (
+          losses_and_metrics.get_batch_identity_ccs_pred(
+              ccs, predictions, labels, alignment_metric_yield_obj
+          )
+      )
+      # Update metrics.
+      model_utils.update_metrics(
+          train_metrics, labels, predictions, identity_pred, identity_ccs
+      )
+      return loss
+
+    for _ in tf.range(num_steps):
+      strategy.run(train_step, args=(next(iterator),))
+
+  @tf.function
+  def distributed_eval_step(iterator, num_steps):
+    def eval_step(inputs):
+      """Eval StepFn."""
+      features, labels = inputs
+      predictions = model(features, training=False)
       loss = compute_loss(labels, predictions)
-    grads = tape.gradient(loss, model.trainable_variables)
-    optimizer.apply_gradients(zip(grads, model.trainable_variables))
-    train_loss.update_state(loss)
+      eval_loss.update_state(loss)
 
-    # Calculate identity for CCS and the DC prediction.
-    ccs = model_utils.get_ccs_from_example(features, params)
-    (identity_ccs, identity_pred) = (
-        losses_and_metrics.get_batch_identity_ccs_pred(
-            ccs, predictions, labels, alignment_metric_yield_obj
-        )
-    )
-    # Update metrics.
-    model_utils.update_metrics(
-        train_metrics, labels, predictions, identity_pred, identity_ccs
-    )
-    return loss
+      # Calculate identity for CCS and the DC prediction.
+      ccs = model_utils.get_ccs_from_example(features, params)
+      (identity_ccs, identity_pred) = (
+          losses_and_metrics.get_batch_identity_ccs_pred(
+              ccs, predictions, labels, alignment_metric_yield_obj
+          )
+      )
+      # Update metrics.
+      model_utils.update_metrics(
+          eval_metrics, labels, predictions, identity_pred, identity_ccs
+      )
+      return loss
 
-  def eval_step(inputs):
-    """Eval StepFn."""
-    features, labels = inputs
-    predictions = model(features)
-    loss = compute_loss(labels, predictions)
-    eval_loss.update_state(loss)
+    for _ in tf.range(num_steps):
+      strategy.run(eval_step, args=(next(iterator),))
 
-    # Calculate identity for CCS and the DC prediction.
-    ccs = model_utils.get_ccs_from_example(features, params)
-    (identity_ccs, identity_pred) = (
-        losses_and_metrics.get_batch_identity_ccs_pred(
-            ccs, predictions, labels, alignment_metric_yield_obj
-        )
-    )
-    # Update metrics.
-    model_utils.update_metrics(
-        eval_metrics, labels, predictions, identity_pred, identity_ccs
-    )
-    return loss
-
-  @tf.function
-  def distributed_train_step(iterator):
-    per_replica_losses = strategy.run(train_step, args=(next(iterator),))
-    return strategy.reduce(
-        tf.distribute.ReduceOp.SUM, per_replica_losses, axis=None
-    )
-
-  @tf.function
-  def distributed_eval_step(iterator):
-    per_replica_losses = strategy.run(eval_step, args=(next(iterator),))
-    return strategy.reduce(
-        tf.distribute.ReduceOp.SUM, per_replica_losses, axis=None
-    )
-
-  log_train_steps = 100
+  n_steps_iter = 100
+  log_train_steps = 1000
   log_eval_steps = 3000
   if _EVAL_AND_LOG_EVERY_STEP.value:
     log_train_steps = 1
@@ -244,9 +253,12 @@ def train_model(
   for epoch in range(initial_epoch, params['num_epochs']):
     logging.info('Starting to run epoch: %s', epoch)
     train_time_start = datetime.datetime.now()
-    for step_train in range(initial_step_train, steps_per_epoch):
+    for step_train in range(initial_step_train, steps_per_epoch, n_steps_iter):
+      logging.info('Starting to run step: %s', step_train)
       with tf.profiler.experimental.Trace('train', step_num=step_train, _r=1):
-        distributed_train_step(train_iterator)
+        distributed_train_step(
+            train_iterator, tf.constant(n_steps_iter, dtype=tf.int64)
+        )
         # Log and reset train metrics.
         if optimizer.iterations % log_train_steps == 0:
           train_time_end = datetime.datetime.now()
@@ -269,13 +281,16 @@ def train_model(
       # Log eval metrics, save checkpoint, and reset eval metrics every
       # log_eval_steps and at the end of training.
       if (optimizer.iterations % log_eval_steps == 0) or (
-          optimizer.iterations == total_train_steps
+          optimizer.iterations >= total_train_steps
       ):
         # Run evalution on the whole eval dataset and collect metrics.
         eval_time_start = datetime.datetime.now()
-        for step_eval in range(1, steps_per_eval + 1):
+        for step_eval in range(1, steps_per_eval + 1, n_steps_iter):
           with tf.profiler.experimental.Trace('eval', step_num=step_eval, _r=1):
-            distributed_eval_step(eval_iterator)
+            distributed_eval_step(
+                eval_iterator,
+                num_steps=tf.constant(n_steps_iter, dtype=tf.int64),
+            )
         eval_time_end = datetime.datetime.now()
         eval_steps_per_second = (
             steps_per_eval / (eval_time_end - eval_time_start).total_seconds()
@@ -329,7 +344,7 @@ def train(
   model_utils.modify_params(params, tpu=tpu, tpu_topology=tpu_topology)
   random.seed(params.seed)
   tf.random.set_seed(params.seed)
-  os.environ['TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE'] = 'False'
+  os.environ['TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE'] = str(debug)
   while True:
     try:
       if tpu is not None:
@@ -337,8 +352,6 @@ def train(
         tf.config.experimental_connect_to_cluster(resolver)
         tf.tpu.experimental.initialize_tpu_system(resolver)
         strategy = tf.distribute.TPUStrategy(resolver)
-      elif debug:
-        strategy = tf.distribute.OneDeviceStrategy(device='/cpu:0')
       else:
         strategy = tf.distribute.MirroredStrategy()
       train_model(out_dir, params, strategy, write_checkpoint_metrics)
@@ -359,9 +372,7 @@ def main(unused_args=None):
 
 
 if __name__ == '__main__':
-  flags.mark_flags_as_required(
-      [
-          'params',
-      ]
-  )
+  flags.mark_flags_as_required([
+      'params',
+  ])
   app.run(main)

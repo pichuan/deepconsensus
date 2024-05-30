@@ -270,15 +270,17 @@ def process_input(
   """
   features = parse_example(proto_string, inference, params.max_length)
   flat_subreads = tf.io.decode_raw(
-      features['subreads/encoded'], dc_constants.TF_DATA_TYPE
+      features['subreads/encoded'],
+      tf.float32,
   )
+
+  # flat_subreads = tf.cast(flat_subreads, params['mixed_precision_policy'])
   subreads = tf.reshape(flat_subreads, features['subreads/shape'])
-  num_passes = tf.cast(
-      features['subreads/num_passes'], dc_constants.TF_DATA_TYPE
-  )
+  num_passes = tf.cast(features['subreads/num_passes'], tf.float32)
   if not inference:
     flat_label = tf.io.decode_raw(
-        features['label/encoded'], dc_constants.TF_DATA_TYPE
+        features['label/encoded'],
+        tf.float32,
     )
     label = tf.reshape(flat_label, features['label/shape'])
 
@@ -300,7 +302,7 @@ def process_input(
 
 
 def tf_example_to_training_tuple(
-    tf_example: Dict[str, tf.Tensor]
+    tf_example: Dict[str, tf.Tensor],
 ) -> Tuple[tf.Tensor, tf.Tensor]:
   """Return only subreads and label."""
   return (tf_example['rows'], tf_example['label'])

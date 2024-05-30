@@ -914,10 +914,10 @@ def from_features_dict(features_dict: Dict[str, Any]) -> DcExample:
 def set_feature(feature, shape):
   """Read in feature and set shape."""
   if not tf.executing_eagerly():
-    feature = tf.io.decode_raw(feature, dc_constants.TF_DATA_TYPE)
+    feature = tf.io.decode_raw(feature, tf.float32)
     feature = tf.reshape(feature, shape)
   else:
-    feature = np.frombuffer(feature, dtype=dc_constants.NP_DATA_TYPE)
+    feature = np.frombuffer(feature, dtype=np.float32)
     feature = feature.reshape(shape)
   return feature
 

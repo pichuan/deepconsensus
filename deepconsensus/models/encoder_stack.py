@@ -31,7 +31,7 @@ Model paper: https://arxiv.org/pdf/1706.03762.pdf
 Transformer model code source: https://github.com/tensorflow/tensor2tensor
 """
 
-from typing import Any, Dict, Union, Iterable
+from typing import Any, Dict, Iterable, Union
 
 import ml_collections
 import tensorflow as tf
@@ -54,9 +54,10 @@ class PrePostProcessingWrapper(tf.keras.layers.Layer):
   def build(self, input_shape: Union[tf.TensorShape, Iterable[tf.TensorShape]]):
     if self.params["rezero"]:
       # Variable used in ReZero (paper: https://arxiv.org/abs/2003.04887).
-      alpha_init = tf.zeros_initializer()
-      self.alpha = tf.Variable(
-          initial_value=alpha_init(shape=()), trainable=True
+      self.alpha = self.add_weight(
+          name="alpha",
+          initializer=tf.zeros_initializer(),
+          shape=(),
       )
     else:
       self.layer_norm = tf.keras.layers.LayerNormalization(
@@ -128,9 +129,7 @@ class EncoderStack(tf.keras.layers.Layer):
       ])
 
     # Create final layer normalization layer.
-    self.output_normalization = tf.keras.layers.LayerNormalization(
-        epsilon=1e-6, dtype="float32"
-    )
+    self.output_normalization = tf.keras.layers.LayerNormalization(epsilon=1e-6)
     super(EncoderStack, self).build(input_shape)
 
   def get_config(self) -> Dict[str, Any]:

@@ -67,19 +67,18 @@ def quality_string_to_array(quality_string: str) -> List[int]:
   return [ord(char) - 33 for char in quality_string]
 
 
-def tf_avg_phred(base_qualities: tf.Tensor) -> tf.float32:
+def tf_avg_phred(base_qualities: tf.Tensor) -> float:
   """Calculate the avg phred using tensorflow."""
 
   def un_phred(val):
     return tf.pow(10.0, (val / -10.0))
 
-  base_qualities = tf.cast(base_qualities, dc_constants.TF_DATA_TYPE)
   base_qualities = base_qualities[base_qualities >= 0]
   if not tf.reduce_any(tf.greater(base_qualities, 0)):
     return 0.0
   else:
     probs = tf.map_fn(un_phred, base_qualities)
-    probs_len = tf.cast(tf.shape(probs), dc_constants.TF_DATA_TYPE)
+    probs_len = tf.cast(tf.shape(probs), dtype=base_qualities.dtype)
     avg_prob = tf.reduce_sum(probs) / probs_len
     avg_q = -10.0 * (tf.math.log(avg_prob) / tf.math.log(10.0))
     return float(avg_q)

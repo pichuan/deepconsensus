@@ -137,11 +137,15 @@ def seq_to_one_hot(sequences: Union[Text, List[Text]]) -> np.ndarray:
   return result.astype(dc_constants.NP_DATA_TYPE)
 
 
-def convert_seqs(sequences: List[str]) -> Tuple[np.ndarray, np.ndarray]:
+def convert_seqs(
+    sequences: List[str],
+    dtype: tf.DType = tf.keras.mixed_precision.global_policy().compute_dtype,
+) -> Tuple[tf.Tensor, tf.Tensor]:
   """Creates label and associated y_pred tensor.
 
   Args:
     sequences: string array inputs for label and prediction
+    dtype: Data type to cast outputs as.
 
   Returns:
     y_true as array
@@ -150,6 +154,8 @@ def convert_seqs(sequences: List[str]) -> Tuple[np.ndarray, np.ndarray]:
   y_true, y_pred_scores = sequences
   y_true = multiseq_to_array(y_true).astype(dc_constants.NP_DATA_TYPE)
   y_pred_scores = seq_to_one_hot(y_pred_scores)
+  y_true = tf.cast(tf.convert_to_tensor(y_true), dtype)
+  y_pred_scores = tf.cast(tf.convert_to_tensor(y_pred_scores), dtype)
   return y_true, y_pred_scores
 
 

@@ -27,7 +27,8 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Tests for losses_and_metrics."""
 
-from typing import Sequence, Tuple, List
+from typing import List, Sequence, Tuple
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
@@ -43,18 +44,14 @@ class PerExampleAccuracyTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='all padding',
-          y_true=np.array(
-              [
-                  [dc_constants.GAP_INT, dc_constants.GAP_INT],
-              ]
-          ),
+          y_true=np.array([
+              [dc_constants.GAP_INT, dc_constants.GAP_INT],
+          ]),
           # Using one hot inputs to create a 'distribution'. The metric will
           # compute the prediction by taking the argmax of the distribution.
-          y_pred_scores=np.array(
-              [
-                  [test_utils.get_one_hot(dc_constants.GAP_INT)] * 2,
-              ]
-          ),
+          y_pred_scores=np.array([
+              [test_utils.get_one_hot(dc_constants.GAP_INT)] * 2,
+          ]),
           # All windows are correct.
           exp_accuracy=1.0,
       ),
@@ -292,6 +289,15 @@ class AlignmentLossTest(parameterized.TestCase):
           width=None,
       ),
       dict(
+          testcase_name='Hard, identical sequences, no pad fp16',
+          sequences=(['TTAGGC', 'AGCTGG'], ['TTAGGC', 'AGCTGG']),
+          del_cost=1.0,
+          loss_reg=None,
+          expected_loss=0.0,
+          width=None,
+          dtype='float16',
+      ),
+      dict(
           testcase_name='Hard, identical sequences, with same pad',
           sequences=(
               ['TTAGGC    ', 'AGCTGG    '],
@@ -301,6 +307,18 @@ class AlignmentLossTest(parameterized.TestCase):
           loss_reg=None,
           expected_loss=0.0,
           width=None,
+      ),
+      dict(
+          testcase_name='Hard, identical sequences, with same pad fp16',
+          sequences=(
+              ['TTAGGC    ', 'AGCTGG    '],
+              ['TTAGGC    ', 'AGCTGG    '],
+          ),
+          del_cost=1.0,
+          loss_reg=None,
+          expected_loss=0.0,
+          width=None,
+          dtype='float16',
       ),
       dict(
           testcase_name='Hard, identical sequences, with different pad',
@@ -344,6 +362,7 @@ class AlignmentLossTest(parameterized.TestCase):
           loss_reg=None,
           expected_loss=2.0,
           width=None,
+          dtype='float16',
       ),
       dict(
           testcase_name='Hard, two deletions at cost one, with pad',
@@ -467,12 +486,28 @@ class AlignmentLossTest(parameterized.TestCase):
           expected_loss=18.118,  # 2.0 + log(eps), with eps = 1e-7
           width=1,
       ),
+      dict(
+          testcase_name='test_float16',
+          sequences=(['TTA', 'GGC'], ['A  ', 'C  ']),
+          del_cost=1.0,
+          loss_reg=None,
+          expected_loss=18.118,  # 2.0 + log(eps), with eps = 1e-7
+          width=1,
+          dtype='float16',
+      ),
   )
   def test_alignment_loss(
-      self, sequences, del_cost, loss_reg, width, expected_loss
+      self,
+      sequences,
+      del_cost,
+      loss_reg,
+      width,
+      expected_loss,
+      dtype='float32',
   ):
     """Checks that edit distance calculation matches expected value."""
-    y_true, y_pred_scores = test_utils.convert_seqs(sequences)
+    y_true, y_pred_scores = test_utils.convert_seqs(sequences, dtype=dtype)
+    tf.keras.mixed_precision.set_global_policy(dtype)
     loss_obj = losses_and_metrics.AlignmentLoss(
         del_cost=del_cost, loss_reg=loss_reg, width=width
     )
@@ -602,6 +637,8 @@ class AlignmentMetricTest(parameterized.TestCase):
         gap_open_penalty=gap_open_penalty,
         gap_extend_penalty=gap_extend_penalty,
     )
+    y_true = tf.convert_to_tensor(y_true)
+    y_pred_scores = tf.convert_to_tensor(y_pred_scores)
     pid = alignment_metric_obj.alignment(y_true, y_pred_scores)[2]['pid']
     for i, _ in enumerate(sequences):
       self.assertAlmostEqual(float(pid[i]), expected_pid[i], places=2)
@@ -756,15 +793,21 @@ class YieldOverCCSMetricTest(parameterized.TestCase):
         exp_yields_over_ccs,
     ):
       # Update metric.
-      yield_over_ccs_obj.update_state(identity_ccs, identity_pred)
+      yield_over_ccs_obj.update_state(
+          tf.Variable(identity_ccs),
+          tf.Variable(identity_pred),
+      )
       # Test accumulated CCS and DC yield.
       self.assertAlmostEqual(
           yield_over_ccs_obj.yield_ccs.numpy(), exp_yield_ccs
       )
-      self.assertAlmostEqual(yield_over_ccs_obj.yield_dc.numpy(), exp_yield_dc)
+      self.assertAlmostEqual(
+          yield_over_ccs_obj.yield_dc.numpy(), tf.Variable(exp_yield_dc)
+      )
       # Test accumulated yield of DC over CCS.
       self.assertAlmostEqual(
-          yield_over_ccs_obj.result().numpy(), exp_yield_over_ccs
+          yield_over_ccs_obj.result().numpy(),
+          tf.Variable(exp_yield_over_ccs),
       )
 
 

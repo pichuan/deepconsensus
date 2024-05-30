@@ -26,8 +26,10 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Implementation of multiheaded attention and self-attention layers."""
+
 import math
-from typing import Any, Dict, Optional, Union, Iterable
+from typing import Any, Dict, Iterable, Optional, Union
+
 import tensorflow as tf
 
 
@@ -204,7 +206,7 @@ class Attention(tf.keras.layers.Layer):
     # False values in the mask will be set to a large negative number in the
     # logits. The attention scores for elements outside the band will be close
     # to 0 after softmax.
-    logits = tf.where(self.attn_mask, logits, -1e9)
+    logits = tf.where(self.attn_mask, logits, logits.dtype.min)
     # Note that softmax internally performs math operations using float32
     # for numeric stability. When training with float16, we keep the input
     # and output in float16 for better performance.
