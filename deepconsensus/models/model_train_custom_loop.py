@@ -139,9 +139,9 @@ def train_model(
     optimizer = model_utils.create_optimizer(params, decay_steps)
     if params['mixed_precision_policy'] in ['mixed_float16', 'float16']:
       optimizer = tf.keras.mixed_precision.LossScaleOptimizer(optimizer)
-    train_loss = tf.keras.metrics.Mean(name='train/loss')
+    train_loss = tf.keras.metrics.Mean(name='train/loss', dtype=tf.float32)
     train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='train/')
-    eval_loss = tf.keras.metrics.Mean(name='eval/loss')
+    eval_loss = tf.keras.metrics.Mean(name='eval/loss', dtype=tf.float32)
     eval_metrics = model_utils.get_deepconsensus_metrics(name_prefix='eval/')
     # Create an alignment metric object that will be used in yield calculation.
     alignment_metric_yield_obj = losses_and_metrics.AlignmentMetric(
