@@ -41,6 +41,17 @@ from deepconsensus.utils import test_utils
 
 class PerExampleAccuracyTest(parameterized.TestCase):
 
+  def setUp(self):
+    super().setUp()
+    self.accuracy_obj = losses_and_metrics.PerExampleAccuracy(
+        'per_example_accuracy', dtype=tf.float32
+    )
+    self.accuracy_obj.reset_states()
+
+  def tearDown(self):
+    super().tearDown()
+    self.accuracy_obj.reset_states()
+
   @parameterized.named_parameters(
       dict(
           testcase_name='all padding',
@@ -75,14 +86,12 @@ class PerExampleAccuracyTest(parameterized.TestCase):
   )
   def test_accuracy(self, y_true, y_pred_scores, exp_accuracy):
     """Checks that accuracy is correct."""
-    accuracy_obj = losses_and_metrics.PerExampleAccuracy()
-    accuracy_obj.update_state(y_true, y_pred_scores)
-    self.assertAlmostEqual(accuracy_obj.result().numpy(), exp_accuracy)
+    self.accuracy_obj.reset_states()
+    self.accuracy_obj.update_state(y_true, y_pred_scores)
+    self.assertAlmostEqual(self.accuracy_obj.result().numpy(), exp_accuracy)
 
   def test_accuracy_multiple_updates(self):
     """Checks that accuracy is correct with multiple updates."""
-
-    accuracy_obj = losses_and_metrics.PerExampleAccuracy()
 
     y_true = np.array([
         test_utils.seq_to_array('A T C G'),
@@ -96,8 +105,9 @@ class PerExampleAccuracyTest(parameterized.TestCase):
     ])
 
     # Update 1 is all correct
-    accuracy_obj.update_state(y_true, y_pred_scores)
-    self.assertEqual(accuracy_obj.result().numpy(), 1.0)
+    self.accuracy_obj.reset_states()
+    self.accuracy_obj.update_state(y_true, y_pred_scores)
+    self.assertEqual(self.accuracy_obj.result().numpy(), 1.0)
 
     y_true = np.array([
         test_utils.seq_to_array('C C C C'),
@@ -111,11 +121,19 @@ class PerExampleAccuracyTest(parameterized.TestCase):
     ])
 
     # Update 2 has 1 errors
-    accuracy_obj.update_state(y_true, y_pred_scores)
-    self.assertAlmostEqual(accuracy_obj.result().numpy(), 0.833333333)
+    self.accuracy_obj.update_state(y_true, y_pred_scores)
+    self.assertAlmostEqual(self.accuracy_obj.result().numpy(), 0.833333333)
 
 
 class PerClassAccuracyTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.accuracy_obj = None
+
+  def tearDown(self):
+    super().tearDown()
+    self.accuracy_obj.reset_states()
 
   @parameterized.named_parameters(
       dict(
@@ -170,9 +188,12 @@ class PerClassAccuracyTest(parameterized.TestCase):
   )
   def test_accuracy(self, y_true, y_pred_scores, class_value, exp_accuracy):
     """Checks that per-class accuracy is correct."""
-    accuracy_obj = losses_and_metrics.PerClassAccuracy(class_value=class_value)
-    accuracy_obj.update_state(y_true, y_pred_scores)
-    self.assertAlmostEqual(accuracy_obj.result().numpy(), exp_accuracy)
+    self.accuracy_obj = losses_and_metrics.PerClassAccuracy(
+        class_value, 'pre_class_accuracy', dtype=tf.float32
+    )
+    self.accuracy_obj.reset_states()
+    self.accuracy_obj.update_state(y_true, y_pred_scores)
+    self.assertAlmostEqual(self.accuracy_obj.result().numpy(), exp_accuracy)
 
 
 class LeftShiftTrueLabels(parameterized.TestCase):
